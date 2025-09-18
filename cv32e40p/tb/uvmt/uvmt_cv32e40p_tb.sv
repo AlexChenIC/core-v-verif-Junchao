@@ -1,60 +1,88 @@
 //
-// Copyright 2020 OpenHW Group
-// Copyright 2020 Datum Technology Corporation
-// Copyright 2020 Silicon Labs, Inc.
+// CV32E40P UVM 验证环境顶层测试平台
 //
-// Licensed under the Solderpad Hardware Licence, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// 版权所有 2020 OpenHW Group
+// 版权所有 2020 Datum Technology Corporation
+// 版权所有 2020 Silicon Labs, Inc.
 //
-//     https://solderpad.org/licenses/
+// 本文件采用 Solderpad Hardware Licence, Version 2.0 许可协议
+// 许可证详情请访问：https://solderpad.org/licenses/
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
-// SPDX-License-Identifier: Apache-2.0 WITH SHL-2.0
+// 除非适用法律要求或书面同意，本软件按"原样"分发，
+// 不提供任何明示或暗示的保证或条件。
+// 详见许可证中关于权限和限制的具体条款。
 //
 
+// SPDX-License-Identifier: Apache-2.0 WITH SHL-2.0
 
 `ifndef __UVMT_CV32E40P_TB_SV__
 `define __UVMT_CV32E40P_TB_SV__
 
-
 /**
- * Module encapsulating the CV32E40P DUT wrapper, and associated SV interfaces.
- * Also provide UVM environment entry and exit points.
+ * 🎪 CV32E40P UVM 验证环境顶层测试平台模块
+ *
+ * 📋 主要功能：
+ *    • 封装 CV32E40P DUT (被测设计) 及其包装器
+ *    • 提供完整的 SystemVerilog 接口集合
+ *    • 建立 UVM 验证环境的入口和出口点
+ *    • 连接处理器核心与验证环境各组件
+ *
+ * 🏗️ 架构设计：
+ *    本模块采用分层架构，将物理硬件接口、验证抽象接口
+ *    和 UVM 环境有机地结合在一起。它是整个验证环境的
+ *    "数字舞台"，为各种验证组件提供交互平台。
+ *
+ * 🔌 接口管理：
+ *    • 时钟和复位接口 (clknrst_if)
+ *    • OBI 内存接口 (指令和数据)
+ *    • 中断接口 (interrupt_if)
+ *    • 调试接口 (debug_if)
+ *    • 虚拟外设接口 (vp_status_if)
+ *
+ * 🎭 UVM 集成：
+ *    通过 UVM 配置数据库机制，将 SystemVerilog 接口
+ *    注册到 UVM 环境中，使得 UVM 组件能够访问和控制
+ *    底层硬件接口。
  */
+// 🔧 默认网表类型设置：防止意外的隐式网表声明
 `default_nettype none
+
+// 🎪 CV32E40P UVM 验证环境顶层测试平台模块定义
 module uvmt_cv32e40p_tb;
 
-   import uvm_pkg::*;
-   import uvmt_cv32e40p_pkg::*;
-   import uvme_cv32e40p_pkg::*;
+   // 📦 导入必需的 UVM 和验证环境包
+   import uvm_pkg::*;              // UVM 核心库
+   import uvmt_cv32e40p_pkg::*;    // CV32E40P 测试包
+   import uvme_cv32e40p_pkg::*;    // CV32E40P 验证环境包
 
-   // DUT (core) parameters: refer to the CV2E40P User Manual.
+   // 🎯 DUT (被测设计) 配置参数
+   // 📚 参考：CV32E40P 用户手册中的参数说明
+
 `ifdef NO_PULP
-   parameter int CORE_PARAM_PULP_XPULP       = 0;
-   parameter int CORE_PARAM_PULP_CLUSTER     = 0;
-   parameter int CORE_PARAM_PULP_ZFINX       = 0;
+   // 🚫 NO_PULP 配置：标准 RISC-V 实现，不包含 PULP 扩展
+   parameter int CORE_PARAM_PULP_XPULP       = 0;  // 禁用 PULP XPULP 扩展
+   parameter int CORE_PARAM_PULP_CLUSTER     = 0;  // 禁用 PULP 集群功能
+   parameter int CORE_PARAM_PULP_ZFINX       = 0;  // 禁用 PULP ZFINX 扩展
 `else
    `ifdef PULP
-      parameter int CORE_PARAM_PULP_XPULP       = 1;
-      parameter int CORE_PARAM_PULP_CLUSTER     = 0;
-      parameter int CORE_PARAM_PULP_ZFINX       = 0;
+      // ⚡ PULP 配置：包含 PULP 研究扩展的实现
+      parameter int CORE_PARAM_PULP_XPULP       = 1;  // 启用 PULP XPULP 扩展
+      parameter int CORE_PARAM_PULP_CLUSTER     = 0;  // 保持集群功能禁用
+      parameter int CORE_PARAM_PULP_ZFINX       = 0;  // 保持 ZFINX 扩展禁用
    `else
-      // If you don't explicitly specify either NO_PULP or PULP, you get NO_PULP
+      // 🔧 默认配置：如果没有明确指定 NO_PULP 或 PULP，默认使用 NO_PULP
       parameter int CORE_PARAM_PULP_XPULP       = 0;
       parameter int CORE_PARAM_PULP_CLUSTER     = 0;
       parameter int CORE_PARAM_PULP_ZFINX       = 0;
    `endif
 `endif
 
+   // 📊 性能监控计数器配置
 `ifdef SET_NUM_MHPMCOUNTERS
+   // 🎛️ 用户自定义：通过编译时宏设置性能计数器数量
    parameter int CORE_PARAM_NUM_MHPMCOUNTERS = `SET_NUM_MHPMCOUNTERS;
 `else
+   // 🔧 默认配置：使用 1 个硬件性能监控计数器
    parameter int CORE_PARAM_NUM_MHPMCOUNTERS = 1;
 `endif
 
